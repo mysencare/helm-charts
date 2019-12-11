@@ -16,7 +16,7 @@ image:
 ## one is using Cognito or not. By setting this to true, this chart will install a sidecar
 ## proxy that takes care of signing all requests being sent to the AWS ES Domain.
 awsSigningSidecar:
-  enabled: false
+  enabled: true
   image:
     repository: abutaha/aws-es-proxy
     tag: 0.9
@@ -51,11 +51,11 @@ elasticsearch:
     password: "yourPass"
   bufferChunkLimit: "2M"
   bufferQueueLimit: 8
-  host: "elasticsearch-client"
-  logstashPrefix: "logstash"
-  port: 9200
+  host: "ES_HOST"
+  logstashPrefix: "eks_prod" # Example: eks_prod or eks_qa
+  port: 443
   path: ""
-  scheme: "http"
+  scheme: "https"
   sslVerify: true
   sslVersion: "TLSv1_2"
   logLevel: "info"

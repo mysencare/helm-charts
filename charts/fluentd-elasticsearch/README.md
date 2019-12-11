@@ -5,7 +5,7 @@
 ## TL;DR;
 
 ```console
-$ helm install kiwigrid/fluentd-elasticsearch
+$ helm install kiwigrid/fluentd-elasticsearch --values values.yaml
 ```
 
 ## Introduction
@@ -20,20 +20,26 @@ The used Docker image also contains Google's detect exceptions (for Java multili
 
 ## Installing the Chart
 
-To install the chart with the release name `my-release`:
+Create the namespace for deploying the chart and set as your current namespace.
 
 ```console
-$ helm install --name my-release kiwigrid/fluentd-elasticsearch
+$ kubectl create ns kube-logging
+```
+
+To install the chart with the release name. We will use `kube-logging`:
+
+```console
+$ helm install --name kube-logging kiwigrid/fluentd-elasticsearch --values values.yaml
 ```
 
 The command deploys fluentd-elasticsearch on the Kubernetes cluster in the default configuration. The [configuration](#configuration) section lists the parameters that can be configured during installation.
 
 ## Uninstalling the Chart
 
-To uninstall/delete the `my-release` deployment:
+To uninstall/delete the `kube-logging` deployment:
 
 ```console
-$ helm delete my-release
+$ helm delete kube-logging
 ```
 
 The command removes all the Kubernetes components associated with the chart and deletes the release.
@@ -115,13 +121,13 @@ The following table lists the configurable parameters of the Fluentd elasticsear
 Specify each parameter using the `--set key=value[,key=value]` argument to `helm install`. For example,
 
 ```console
-$ helm install --name my-release kiwigrid/fluentd-elasticsearch
+$ helm install --name kube-logging kiwigrid/fluentd-elasticsearch --set elasticsearch.host=ES_HOST
 ```
 
 Alternatively, a YAML file that specifies the values for the above parameters can be provided while installing the chart. For example,
 
 ```console
-$ helm install --name my-release -f values.yaml kiwigrid/fluentd-elasticsearch
+$ helm install --name kube-logging -f values.yaml kiwigrid/fluentd-elasticsearch
 ```
 
 ## Upgrading
