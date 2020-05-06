@@ -3,7 +3,7 @@ image:
 ## Specify an imagePullPolicy (Required)
 ## It's recommended to change this to 'Always' if the image tag is 'latest'
 ## ref: http://kubernetes.io/docs/user-guide/images/#updating-images
-  tag: v2.6.0
+  tag: v3.0.1
   pullPolicy: IfNotPresent
   ## Optionally specify an array of imagePullSecrets.
   ## Secrets must be manually created in the namespace.
@@ -17,9 +17,20 @@ image:
 ## proxy that takes care of signing all requests being sent to the AWS ES Domain.
 awsSigningSidecar:
   enabled: true
+  resources: {}
+  # limits:
+  #   cpu: 100m
+  #   memory: 500Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 200Mi
+  network:
+    port: 8080
+    address: localhost
+    remoteReadTimeoutSeconds: 15
   image:
     repository: abutaha/aws-es-proxy
-    tag: 0.9
+    tag: v1.0
 
 # Specify to use specific priorityClass for pods
 # ref: https://kubernetes.io/docs/concepts/configuration/pod-priority-preemption/
@@ -49,16 +60,35 @@ elasticsearch:
     enabled: false
     user: "yourUser"
     password: "yourPass"
-  bufferChunkLimit: "2M"
-  bufferQueueLimit: 8
-  host: "ES_HOST"
-  logstashPrefix: "eks_prod" # Example: eks_prod or eks_qa
+  includeTagKey: true
+  hosts: ["elasticsearch-client:9200"] # UPdate
   port: 443
+  logstash:
+    enabled: true
+    prefix: "eks_prod" # Example: eks_prod or eks_qa
   path: ""
   scheme: "https"
   sslVerify: true
   sslVersion: "TLSv1_2"
+  outputType: "elasticsearch"
+  typeName: "_doc"
   logLevel: "info"
+  reconnectOnError: true
+  reloadOnFailure: false
+  reloadConnections: false
+  buffer:
+    enabled: true
+    type: "file"
+    path: "/var/log/fluentd-buffers/kubernetes.system.buffer"
+    flushMode: "interval"
+    retryType: "exponential_backoff"
+    flushThreadCount: 2
+    flushInterval: "5s"
+    retryForever: true
+    retryMaxInterval: 30
+    chunkLimitSize: "2M"
+    queueLimitLength: 8
+    overflowAction: "block"
 
 # If you want to change args of fluentd process
 # by example you can add -vv to launch with trace log
@@ -67,13 +97,13 @@ fluentdArgs: "--no-supervisor -q"
 # If you want to add custom environment variables, use the env dict
 # You can then reference these in your config file e.g.:
 #     user "#{ENV['OUTPUT_USER']}"
-env:
+env: {}
   # OUTPUT_USER: my_user
   # LIVENESS_THRESHOLD_SECONDS: 300
   # STUCK_THRESHOLD_SECONDS: 900
 
 # If you want to add custom environment variables from secrets, use the secret list
-secret:
+secret: []
 # - name: ELASTICSEARCH_PASSWORD
 #   secret_name: elasticsearch
 #   secret_key: password
@@ -87,6 +117,7 @@ serviceAccount:
   # The name of the ServiceAccount to use.
   # If not set and create is true, a name is generated using the fullname template
   name: ""
+  annotations: {}
 
 ## Specify if a Pod Security Policy for node-exporter must be created
 ## Ref: https://kubernetes.io/docs/concepts/policy/pod-security-policy/
@@ -105,6 +136,38 @@ podSecurityPolicy:
 
 livenessProbe:
   enabled: true
+  initialDelaySeconds: 600
+  periodSeconds: 60
+  kind:
+    exec:
+      command:
+      # Liveness probe is aimed to help in situations where fluentd
+      # silently hangs for no apparent reasons until manual restart.
+      # The idea of this probe is that if fluentd is not queueing or
+      # flushing chunks for 5 minutes, something is not right. If
+      # you want to change the fluentd configuration, reducing amount of
+      # logs fluentd collects, consider changing the threshold or turning
+      # liveness probe off completely.
+      - '/bin/sh'
+      - '-c'
+      - >
+        LIVENESS_THRESHOLD_SECONDS=${LIVENESS_THRESHOLD_SECONDS:-300};
+        STUCK_THRESHOLD_SECONDS=${STUCK_THRESHOLD_SECONDS:-900};
+        if [ ! -e /var/log/fluentd-buffers ];
+        then
+          exit 1;
+        fi;
+        touch -d "${STUCK_THRESHOLD_SECONDS} seconds ago" /tmp/marker-stuck;
+        if [ -z "$(find /var/log/fluentd-buffers -type d -newer /tmp/marker-stuck -print -quit)" ];
+        then
+          rm -rf /var/log/fluentd-buffers;
+          exit 1;
+        fi;
+        touch -d "${LIVENESS_THRESHOLD_SECONDS} seconds ago" /tmp/marker-liveness;
+        if [ -z "$(find /var/log/fluentd-buffers -type d -newer /tmp/marker-liveness -print -quit)" ];
+        then
+          exit 1;
+        fi;
 
 annotations: {}
 
@@ -117,7 +180,7 @@ podAnnotations: {}
 updateStrategy:
   type: RollingUpdate
 
-tolerations: {}
+tolerations: []
   # - key: node-role.kubernetes.io/master
   #   operator: Exists
   #   effect: NoSchedule
@@ -147,6 +210,16 @@ serviceMonitor:
   path: /metrics
   port: 24231
   labels: {}
+  metricRelabelings: []
+  relabelings: []
+  jobLabel: "app.kubernetes.io/instance"
+  type: ClusterIP
+
+serviceMetric:
+  ## If true, the metrics service will be created
+  ## Alternative to implicit creation through serviceMonitor.enabled
+  ##
+  enabled: false
 
 prometheusRule:
   ## If true, a PrometheusRule CRD is created for a prometheus operator
@@ -167,18 +240,19 @@ configMaps:
     outputConf: true
 
 # can be used to add new config or overwrite the default configmaps completely after the configmaps default has been disabled above
-extraConfigMaps:
+extraConfigMaps: {}
   # system.conf: |-
   #   <system>
   #     root_dir /tmp/fluentd-buffers/
   #   </system>
 
-# extraVolumes:
+extraVolumes: []
 #   - name: es-certs
 #     secret:
 #       defaultMode: 420
 #       secretName: es-certs
-# extraVolumeMounts:
+
+extraVolumeMounts: []
 #   - name: es-certs
 #     mountPath: /certs
 #     readOnly: true

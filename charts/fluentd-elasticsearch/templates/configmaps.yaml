@@ -3,11 +3,10 @@ kind: ConfigMap
 metadata:
   name: {{ include "fluentd-elasticsearch.fullname" . }}
   labels:
-    app.kubernetes.io/name: {{ include "fluentd-elasticsearch.name" . }}
-    helm.sh/chart: {{ include "fluentd-elasticsearch.chart" . }}
-    app.kubernetes.io/instance: {{ .Release.Name }}
-    app.kubernetes.io/managed-by: {{ .Release.Service }}
+{{ include "fluentd-elasticsearch.labels" . | indent 4 }}
+    {{- if semverCompare "> 1.6" .Capabilities.KubeVersion.GitVersion }}
     kubernetes.io/cluster-service: "true"
+    {{- end }}
     addonmanager.kubernetes.io/mode: Reconcile
 data:
 {{- if .Values.configMaps.useDefaults.systemConf }}
@@ -156,6 +155,8 @@ data:
       key message
       multiline_end_regexp /\n$/
       separator ""
+      timeout_label @NORMAL
+      flush_interval 5
     </filter>
 
     # Enriches records with Kubernetes metadata
@@ -169,6 +170,7 @@ data:
       @id filter_parser
       @type parser
       key_name log
+      reserve_time true
       reserve_data true
       remove_key_name_field true
       <parse>
@@ -215,7 +217,7 @@ data:
     <source>
       @id docker.log
       @type tail
-      format /^time="(?<time>[^)]*)" level=(?<severity>[^ ]*) msg="(?<message>[^"]*)"( err="(?<error>[^"]*)")?( statusCode=($<status_code>\d+))?/
+      format /time="(?<time>[^)]*)" level=(?<severity>[^ ]*) msg="(?<message>[^"]*)"( err="(?<error>[^"]*)")?( statusCode=($<status_code>\d+))?/
       path /var/log/docker.log
       pos_file /var/log/docker.log.pos
       tag docker
@@ -353,6 +355,10 @@ data:
         persistent true
         path /var/log/journald-docker.pos
       </storage>
+      <entry>
+        fields_strip_underscores true
+        fields_lowercase true
+      </entry>
       read_from_head true
       tag docker
     </source>
@@ -366,6 +372,10 @@ data:
         persistent true
         path /var/log/journald-container-runtime.pos
       </storage>
+      <entry>
+        fields_strip_underscores true
+        fields_lowercase true
+      </entry>
       read_from_head true
       tag container-runtime
     </source>
@@ -379,6 +389,10 @@ data:
         persistent true
         path /var/log/journald-kubelet.pos
       </storage>
+      <entry>
+        fields_strip_underscores true
+        fields_lowercase true
+      </entry>
       read_from_head true
       tag kubelet
     </source>
@@ -392,6 +406,10 @@ data:
         persistent true
         path /var/log/journald-node-problem-detector.pos
       </storage>
+      <entry>
+        fields_strip_underscores true
+        fields_lowercase true
+      </entry>
       read_from_head true
       tag node-problem-detector
     </source>
@@ -467,39 +485,56 @@ data:
 
 {{- if .Values.configMaps.useDefaults.outputConf }}
   output.conf: |-
+    # handle timeout log lines from concat plugin
+    <match **>
+      @type relabel
+      @label @NORMAL
+    </match>
+
+    <label @NORMAL>
     <match **>
       @id elasticsearch
-      @type elasticsearch
+      @type "#{ENV['OUTPUT_TYPE']}"
       @log_level "#{ENV['OUTPUT_LOG_LEVEL']}"
-      include_tag_key true
-      type_name _doc
-      host "#{ENV['OUTPUT_HOST']}"
-      port "#{ENV['OUTPUT_PORT']}"
+      include_tag_key "#{ENV['OUTPUT_INCLUDE_TAG_KEY']}"
+      hosts "#{ENV['OUTPUT_HOSTS']}"
       path "#{ENV['OUTPUT_PATH']}"
       scheme "#{ENV['OUTPUT_SCHEME']}"
       ssl_verify "#{ENV['OUTPUT_SSL_VERIFY']}"
       ssl_version "#{ENV['OUTPUT_SSL_VERSION']}"
+{{- if (ne .Values.elasticsearch.typeName "") }}
+      type_name "#{ENV['OUTPUT_TYPE_NAME']}"
+{{- end }}
 {{- if .Values.elasticsearch.auth.enabled }}
       user "#{ENV['OUTPUT_USER']}"
       password "#{ENV['OUTPUT_PASSWORD']}"
 {{- end }}
-      logstash_format true
+{{- if .Values.elasticsearch.logstash.enabled }}
+      logstash_format "#{ENV['LOGSTASH_FORMAT']}"
       logstash_prefix "#{ENV['LOGSTASH_PREFIX']}"
-      reconnect_on_error true
+{{- else }}
+      logstash_format "#{ENV['LOGSTASH_FORMAT']}"
+{{- end }}
+      reconnect_on_error "#{ENV['OUTPUT_RECONNECT_ON_ERROR']}"
+      reload_on_failure "#{ENV['OUTPUT_RELOAD_ON_FAILURE']}"
+      reload_connections "#{ENV['OUTPUT_RELOAD_CONNECTIONS']}"
+{{- if .Values.elasticsearch.buffer.enabled }}
       <buffer>
-        @type file
-        path /var/log/fluentd-buffers/kubernetes.system.buffer
-        flush_mode interval
-        retry_type exponential_backoff
-        flush_thread_count 2
-        flush_interval 5s
-        retry_forever
-        retry_max_interval 30
+        @type "#{ENV['OUTPUT_BUFFER_TYPE']}"
+        path "#{ENV['OUTPUT_BUFFER_PATH']}"
+        flush_mode "#{ENV['OUTPUT_BUFFER_FLUSH_MODE']}"
+        retry_type "#{ENV['OUTPUT_BUFFER_RETRY_TYPE']}"
+        flush_thread_count "#{ENV['OUTPUT_BUFFER_FLUSH_THREAD_TYPE']}"
+        flush_interval "#{ENV['OUTPUT_BUFFER_FLUSH_INTERVAL']}"
+        retry_forever "#{ENV['OUTPUT_BUFFER_RETRY_FOREVER']}"
+        retry_max_interval "#{ENV['OUTPUT_BUFFER_RETRY_MAX_INTERVAL']}"
         chunk_limit_size "#{ENV['OUTPUT_BUFFER_CHUNK_LIMIT']}"
         queue_limit_length "#{ENV['OUTPUT_BUFFER_QUEUE_LIMIT']}"
-        overflow_action block
+        overflow_action "#{ENV['OUTPUT_BUFFER_OVERFLOW_ACTION']}"
       </buffer>
+{{- end }}
     </match>
+    </label>
 {{- end }}
 
 {{- range $key, $value := .Values.extraConfigMaps }}

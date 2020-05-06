@@ -58,6 +58,8 @@ The following table lists the configurable parameters of the Graphite chart and 
 | `nodeSelector`                 | NodeSelector                                 | `{}`                                   |
 | `tolerations`                  | Tolerations                                  | `[]`                                   |
 | `affinity`                     | Affinity                                     | `{}`                                   |
+| `timeZone`                     | Timezone                                     | `Etc/UTC`                              |
+| `initContainers`               | Init Containers                              | `[]`                                   |
 | `configMaps`                   | Graphite Config files                        | see values.yaml                        |
 | `statsdConfigMaps`             | StatsD Config files                          | see values.yaml                        |
 | `statsd.interface`             | StatsD server interface, `TCP` or `UDP`      | `UDP`                                  |
