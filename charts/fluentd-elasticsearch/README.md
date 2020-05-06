@@ -27,6 +27,10 @@ Create the namespace for deploying the chart and set as your current namespace.
 $ kubectl create ns kube-logging
 ```
 
+Update values from values.yaml. Specifically, you must set:
+- "hosts" key in eleasticsearch
+- "prefix" in logstash
+
 To install the chart with the release name. We will use `kube-logging`:
 
 ```console
